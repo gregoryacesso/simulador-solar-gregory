@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import logo from "./assets/logo.png";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "https://simulador-solar-api.onrender.com";
 
 function fmtBRL(v) {
   try {
