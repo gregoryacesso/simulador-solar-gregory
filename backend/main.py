@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 import uuid
 import os
+import csv
 from typing import Literal
 
 from config import settings
@@ -21,21 +22,24 @@ from leads import salvar_ou_atualizar_lead
 APP_DIR = Path(__file__).parent
 STORAGE_DIR = APP_DIR / "storage"
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
 ASSETS_DIR = APP_DIR / "assets"
 LOGO_PATH = ASSETS_DIR / "logo.jpeg"
+
+LEADS_FILE = APP_DIR / "leads.csv"
 
 app = FastAPI(title="Simulador de Orçamento Solar - Gregory")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # em produção, restrinja para seu domínio
+    allow_origins=["*"],  # depois você pode restringir para seu domínio
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 PacoteNome = Literal["Econômico", "Padrão", "Premium"]
-ModoTaxas = Literal["PERCENTUAL", "FIXO"]  # ✅ automático Energisa ou manual fixo
+ModoTaxas = Literal["PERCENTUAL", "FIXO"]
 
 
 class SimulacaoIn(BaseModel):
@@ -45,13 +49,9 @@ class SimulacaoIn(BaseModel):
 
     conta_media_rs: float = Field(gt=0)
 
-    # ✅ modo de taxas
     modo_taxas: ModoTaxas = "PERCENTUAL"
-
-    # ✅ usado apenas se modo_taxas == FIXO
     custo_fixo_mensal_rs: float = Field(default=settings.custo_fixo_mensal_rs, ge=0)
 
-    # parâmetros
     tarifa_rs_kwh: float = Field(default=settings.default_tarifa_rs_kwh, gt=0)
     hsp: float = Field(default=settings.default_hsp, gt=0)
     pr: float = Field(default=settings.performance_ratio, gt=0)
@@ -89,6 +89,10 @@ class SimulacaoOut(BaseModel):
     whatsapp_url: str
 
 
+class LeadZapIn(BaseModel):
+    id: str
+
+
 def valor_pacote_destacado(pacote: str, inv_econ: float, inv_pad: float, inv_pre: float) -> float:
     if pacote == "Econômico":
         return inv_econ
@@ -124,7 +128,7 @@ def build_whatsapp_url(
 def simular(data: SimulacaoIn):
     lead_id = uuid.uuid4().hex[:10]
 
-    # ✅ separa fixo/variável de acordo com modo
+    # separa fixo/variável
     if data.modo_taxas == "PERCENTUAL":
         custo_fixo_rs = data.conta_media_rs * settings.perc_fixo_taxas
         valor_variavel_rs = data.conta_media_rs * settings.perc_variavel_energia
@@ -132,6 +136,7 @@ def simular(data: SimulacaoIn):
         custo_fixo_rs = data.custo_fixo_mensal_rs
         valor_variavel_rs = max(0.0, data.conta_media_rs - custo_fixo_rs)
 
+    # converte a parte variável em kWh
     kwh_mes = rs_to_kwh(valor_variavel_rs, data.tarifa_rs_kwh)
 
     # dimensionamento
@@ -157,7 +162,7 @@ def simular(data: SimulacaoIn):
     pacote_destacado = data.pacote_destacado
     valor_destacado = valor_pacote_destacado(pacote_destacado, inv_econ, inv_pad, inv_pre)
 
-    # ✅ salva lead como SIMULOU
+    # salva lead como SIMULOU
     salvar_ou_atualizar_lead({
         "id": lead_id,
         "nome": data.nome,
@@ -174,7 +179,7 @@ def simular(data: SimulacaoIn):
         "status": "SIMULOU",
     })
 
-    # PDF
+    # gera PDF
     pdf_name = f"orcamento_solar_{lead_id}.pdf"
     pdf_path = STORAGE_DIR / pdf_name
 
@@ -189,31 +194,28 @@ def simular(data: SimulacaoIn):
         cidade_uf=data.cidade_uf,
         cliente_nome=data.nome,
         cliente_telefone=data.telefone,
-
         conta_total_rs=data.conta_media_rs,
         modo_taxas=data.modo_taxas,
         custo_fixo_mensal_rs=custo_fixo_rs,
         valor_variavel_rs=valor_variavel_rs,
         tarifa_rs_kwh=data.tarifa_rs_kwh,
         kwh_estimado_mes=kwh_mes,
-
         kwp_sugerido=kwp,
         prod_estimada_kwh_mes=prod_kwh,
         economia_estimada_rs_mes=economia_rs,
-
         investimento_economico_rs=inv_econ,
         investimento_padrao_rs=inv_pad,
         investimento_premium_rs=inv_pre,
         payback_meses_economico=pb_econ,
         payback_meses_padrao=pb_pad,
         payback_meses_premium=pb_pre,
-
         pacote_destacado=pacote_destacado,
         condicao_pagamento=condicao,
         validade_dias=10,
     )
 
     pdf_url = f"/api/pdf/{pdf_name}"
+
     base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
     pdf_full_url = f"{base_url}{pdf_url}" if base_url else f"http://localhost:8000{pdf_url}"
 
@@ -231,39 +233,32 @@ def simular(data: SimulacaoIn):
         id=lead_id,
         kwp_sugerido=kwp,
         producao_estimada_kwh_mes=prod_kwh,
-
         conta_total_rs=data.conta_media_rs,
         modo_taxas=data.modo_taxas,
         custo_fixo_mensal_rs=custo_fixo_rs,
         valor_variavel_rs=valor_variavel_rs,
         kwh_estimado_mes=kwh_mes,
-
         economia_estimada_rs_mes=economia_rs,
-
         investimento_economico_rs=inv_econ,
         investimento_padrao_rs=inv_pad,
         investimento_premium_rs=inv_pre,
-
         payback_meses_economico=pb_econ,
         payback_meses_padrao=pb_pad,
         payback_meses_premium=pb_pre,
-
         pacote_destacado=pacote_destacado,
         valor_pacote_destacado_rs=valor_destacado,
-
         pdf_url=pdf_url,
         pdf_full_url=pdf_full_url,
         whatsapp_url=whatsapp_url,
     )
 
 
-class LeadZapIn(BaseModel):
-    id: str
-
-
 @app.post("/api/lead-zap")
 def marcou_whatsapp(dados: LeadZapIn):
-    salvar_ou_atualizar_lead({"id": dados.id, "status": "CHAMOU_NO_ZAP"})
+    salvar_ou_atualizar_lead({
+        "id": dados.id,
+        "status": "CHAMOU_NO_ZAP",
+    })
     return {"ok": True}
 
 
@@ -275,15 +270,6 @@ def get_pdf(pdf_name: str):
     return FileResponse(str(pdf_path), media_type="application/pdf", filename=pdf_name)
 
 
-@app.get("/api/health")
-def health():
-    return {"ok": True}
-from fastapi.responses import FileResponse
-from pathlib import Path
-
-STORAGE_DIR = Path("storage")
-LEADS_FILE = STORAGE_DIR / "leads.csv"
-
 @app.get("/leads")
 def listar_leads():
     if not LEADS_FILE.exists():
@@ -293,3 +279,18 @@ def listar_leads():
         media_type="text/csv",
         filename="leads.csv"
     )
+
+
+@app.get("/leads-json")
+def listar_leads_json():
+    if not LEADS_FILE.exists():
+        return {"mensagem": "Nenhum lead registrado ainda."}
+
+    with open(LEADS_FILE, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        return list(reader)
+
+
+@app.get("/api/health")
+def health():
+    return {"ok": True}
