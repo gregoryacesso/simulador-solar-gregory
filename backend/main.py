@@ -6,6 +6,7 @@ from pathlib import Path
 import uuid
 import os
 import csv
+from datetime import datetime
 from typing import Literal
 
 from config import settings
@@ -32,7 +33,7 @@ app = FastAPI(title="Simulador de Orçamento Solar - Gregory")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # depois você pode restringir para seu domínio
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -128,7 +129,6 @@ def build_whatsapp_url(
 def simular(data: SimulacaoIn):
     lead_id = uuid.uuid4().hex[:10]
 
-    # separa fixo/variável
     if data.modo_taxas == "PERCENTUAL":
         custo_fixo_rs = data.conta_media_rs * settings.perc_fixo_taxas
         valor_variavel_rs = data.conta_media_rs * settings.perc_variavel_energia
@@ -136,21 +136,15 @@ def simular(data: SimulacaoIn):
         custo_fixo_rs = data.custo_fixo_mensal_rs
         valor_variavel_rs = max(0.0, data.conta_media_rs - custo_fixo_rs)
 
-    # converte a parte variável em kWh
     kwh_mes = rs_to_kwh(valor_variavel_rs, data.tarifa_rs_kwh)
 
-    # dimensionamento
     kwp = arredonda_kwp(kwp_from_kwh_month(kwh_mes, data.hsp, data.pr))
-
-    # produção
     prod_kwh = estimativa_producao_mensal_kwh(kwp, data.hsp, data.pr)
 
-    # economia
     economia_teorica_rs = data.tarifa_rs_kwh * prod_kwh
     teto_economia_rs = data.conta_media_rs * settings.max_reducao
     economia_rs = max(0.0, min(economia_teorica_rs, teto_economia_rs))
 
-    # pacotes
     inv_econ = kwp * settings.preco_kwp_economico
     inv_pad = kwp * settings.preco_kwp_padrao
     inv_pre = kwp * settings.preco_kwp_premium
@@ -162,7 +156,6 @@ def simular(data: SimulacaoIn):
     pacote_destacado = data.pacote_destacado
     valor_destacado = valor_pacote_destacado(pacote_destacado, inv_econ, inv_pad, inv_pre)
 
-    # salva lead como SIMULOU
     salvar_ou_atualizar_lead({
         "id": lead_id,
         "nome": data.nome,
@@ -179,7 +172,6 @@ def simular(data: SimulacaoIn):
         "status": "SIMULOU",
     })
 
-    # gera PDF
     pdf_name = f"orcamento_solar_{lead_id}.pdf"
     pdf_path = STORAGE_DIR / pdf_name
 
@@ -215,7 +207,6 @@ def simular(data: SimulacaoIn):
     )
 
     pdf_url = f"/api/pdf/{pdf_name}"
-
     base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
     pdf_full_url = f"{base_url}{pdf_url}" if base_url else f"http://localhost:8000{pdf_url}"
 
@@ -288,7 +279,17 @@ def listar_leads_json():
 
     with open(LEADS_FILE, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        return list(reader)
+        leads = list(reader)
+
+    def parse_data(item):
+        try:
+            return datetime.strptime(item.get("data", ""), "%d/%m/%Y %H:%M")
+        except Exception:
+            return datetime.min
+
+    # mais novo primeiro
+    leads.sort(key=parse_data, reverse=True)
+    return leads
 
 
 @app.get("/api/health")
