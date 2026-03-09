@@ -278,3 +278,18 @@ def get_pdf(pdf_name: str):
 @app.get("/api/health")
 def health():
     return {"ok": True}
+from fastapi.responses import FileResponse
+from pathlib import Path
+
+STORAGE_DIR = Path("storage")
+LEADS_FILE = STORAGE_DIR / "leads.csv"
+
+@app.get("/leads")
+def listar_leads():
+    if not LEADS_FILE.exists():
+        return {"mensagem": "Nenhum lead registrado ainda."}
+    return FileResponse(
+        LEADS_FILE,
+        media_type="text/csv",
+        filename="leads.csv"
+    )
