@@ -1,15 +1,19 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import logo from "./assets/logo.png";
 
 const API_BASE = "https://simulador-solar-api.onrender.com";
 
 function fmtBRL(v) {
   try {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(v);
   } catch {
     return `R$ ${v}`;
   }
 }
+
 function fmtInt(v) {
   try {
     return new Intl.NumberFormat("pt-BR").format(Math.round(v));
@@ -18,7 +22,21 @@ function fmtInt(v) {
   }
 }
 
-function Button({ variant = "primary", disabled, children, onClick }) {
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    function onResize() {
+      setIsMobile(window.innerWidth <= 768);
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return isMobile;
+}
+
+function Button({ variant = "primary", disabled, children, onClick, fullWidth = false }) {
   const styles = {
     primary: {
       bg: "linear-gradient(135deg, #0A7A5A 0%, #19B37A 55%, #F7C948 130%)",
@@ -27,26 +45,31 @@ function Button({ variant = "primary", disabled, children, onClick }) {
       sh: "0 14px 32px rgba(10,122,90,.22)",
     },
     secondary: {
-      bg: "rgba(255,255,255,0.85)",
+      bg: "rgba(255,255,255,0.95)",
       fg: "#111827",
       bd: "#E5E7EB",
       sh: "0 10px 24px rgba(0,0,0,.06)",
     },
   };
+
   const s = styles[variant] || styles.primary;
+
   return (
     <button
       disabled={disabled}
       onClick={onClick}
       style={{
-        padding: "12px 14px",
+        width: fullWidth ? "100%" : "auto",
+        padding: "13px 16px",
         borderRadius: 14,
         border: `1px solid ${s.bd}`,
         background: s.bg,
         color: s.fg,
-        fontWeight: 950,
+        fontWeight: 900,
+        fontSize: 14,
         cursor: disabled ? "not-allowed" : "pointer",
         boxShadow: s.sh,
+        opacity: disabled ? 0.7 : 1,
       }}
     >
       {children}
@@ -59,7 +82,7 @@ function Field({ label, hint, children }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <label style={{ fontSize: 12, color: "#111827", fontWeight: 900 }}>{label}</label>
       {children}
-      {hint ? <div style={{ fontSize: 12, color: "#6B7280" }}>{hint}</div> : null}
+      {hint ? <div style={{ fontSize: 12, color: "#6B7280", lineHeight: 1.35 }}>{hint}</div> : null}
     </div>
   );
 }
@@ -70,30 +93,31 @@ function Input(props) {
       {...props}
       style={{
         width: "100%",
-        padding: "12px 12px",
+        padding: "13px 12px",
         borderRadius: 14,
         border: "1px solid #E5E7EB",
-        background: "rgba(255,255,255,0.92)",
+        background: "rgba(255,255,255,0.95)",
         outline: "none",
         boxShadow: "0 1px 0 rgba(0,0,0,.02)",
-        fontSize: 14,
+        fontSize: 15,
       }}
     />
   );
 }
+
 function Select(props) {
   return (
     <select
       {...props}
       style={{
         width: "100%",
-        padding: "12px 12px",
+        padding: "13px 12px",
         borderRadius: 14,
         border: "1px solid #E5E7EB",
-        background: "rgba(255,255,255,0.92)",
+        background: "rgba(255,255,255,0.95)",
         outline: "none",
         boxShadow: "0 1px 0 rgba(0,0,0,.02)",
-        fontSize: 14,
+        fontSize: 15,
       }}
     />
   );
@@ -106,12 +130,12 @@ function Stat({ label, value, sub }) {
         border: "1px solid rgba(229,231,235,.9)",
         borderRadius: 16,
         padding: 14,
-        background: "rgba(255,255,255,0.85)",
-        boxShadow: "0 12px 30px rgba(0,0,0,.04)",
+        background: "rgba(255,255,255,0.92)",
+        boxShadow: "0 10px 24px rgba(0,0,0,.04)",
       }}
     >
       <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 900 }}>{label}</div>
-      <div style={{ fontSize: 18, color: "#111827", fontWeight: 1000, marginTop: 6 }}>{value}</div>
+      <div style={{ fontSize: 17, color: "#111827", fontWeight: 1000, marginTop: 6 }}>{value}</div>
       {sub ? <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>{sub}</div> : null}
     </div>
   );
@@ -123,12 +147,12 @@ function Modal({ title, children, onClose }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(2,6,23,.55)",
+        background: "rgba(2,6,23,.58)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 18,
-        zIndex: 50,
+        padding: 16,
+        zIndex: 60,
       }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -137,9 +161,9 @@ function Modal({ title, children, onClose }) {
       <div
         style={{
           width: "min(640px, 100%)",
-          background: "rgba(255,255,255,0.95)",
+          background: "rgba(255,255,255,0.98)",
           borderRadius: 20,
-          border: "1px solid rgba(255,255,255,0.6)",
+          border: "1px solid rgba(255,255,255,0.7)",
           boxShadow: "0 25px 60px rgba(0,0,0,.35)",
           overflow: "hidden",
         }}
@@ -176,6 +200,8 @@ function Modal({ title, children, onClose }) {
 }
 
 export default function App() {
+  const isMobile = useIsMobile();
+
   const [form, setForm] = useState({
     nome: "",
     telefone: "",
@@ -188,9 +214,28 @@ export default function App() {
 
   const [loading, setLoading] = useState(false);
   const [loadingPacote, setLoadingPacote] = useState(false);
+  const [warmingUp, setWarmingUp] = useState(true);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [confirm, setConfirm] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function warmUp() {
+      try {
+        await fetch(`${API_BASE}/api/health`);
+      } catch (_) {
+      } finally {
+        if (active) setWarmingUp(false);
+      }
+    }
+
+    warmUp();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -202,7 +247,11 @@ export default function App() {
       Number(form.tarifa_rs_kwh) > 0;
 
     if (!okBasico) return false;
-    if (form.modo_taxas === "FIXO") return Number(form.custo_fixo_mensal_rs) >= 0;
+
+    if (form.modo_taxas === "FIXO") {
+      return Number(form.custo_fixo_mensal_rs) >= 0;
+    }
+
     return true;
   }, [form]);
 
@@ -220,12 +269,16 @@ export default function App() {
 
     const r = await fetch(`${API_BASE}/api/simular`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(payload),
     });
 
     const data = await r.json();
-    if (!r.ok || data.error) throw new Error(data.error || "Falha na simulação");
+    if (!r.ok || data.error) {
+      throw new Error(data.error || "Falha na simulação");
+    }
     return data;
   }
 
@@ -234,6 +287,7 @@ export default function App() {
     setLoading(true);
     setResult(null);
     setConfirm(null);
+
     try {
       const data = await simular("Padrão");
       setResult(data);
@@ -246,6 +300,7 @@ export default function App() {
 
   const pacotes = useMemo(() => {
     if (!result) return [];
+
     return [
       {
         key: "economico",
@@ -274,6 +329,7 @@ export default function App() {
 
   async function confirmarEAbrirWhatsApp() {
     if (!confirm) return;
+
     setLoadingPacote(true);
     setError("");
 
@@ -282,7 +338,9 @@ export default function App() {
 
       await fetch(`${API_BASE}/api/lead-zap`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ id: data.id }),
       });
 
@@ -302,14 +360,14 @@ export default function App() {
         minHeight: "100vh",
         background:
           "radial-gradient(1200px 600px at 15% 10%, rgba(247,201,72,.38), transparent 60%), radial-gradient(900px 500px at 90% 5%, rgba(25,179,122,.22), transparent 55%), linear-gradient(180deg, #F8FAFC 0%, #F3F7F6 60%, #F8FAFC 100%)",
-        padding: 22,
+        padding: isMobile ? 12 : 22,
       }}
     >
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        {/* BANNER / HERO */}
+        {/* HERO */}
         <div
           style={{
-            borderRadius: 26,
+            borderRadius: 24,
             overflow: "hidden",
             position: "relative",
             border: "1px solid rgba(255,255,255,0.65)",
@@ -319,7 +377,6 @@ export default function App() {
               "linear-gradient(135deg, rgba(10,122,90,.14) 0%, rgba(25,179,122,.10) 45%, rgba(247,201,72,.18) 100%)",
           }}
         >
-          {/* textura solar (SVG inline) */}
           <svg
             width="100%"
             height="100%"
@@ -348,7 +405,7 @@ export default function App() {
                 width="18"
                 height="260"
                 fill="url(#rays)"
-                transform={`skewX(${(i % 2 === 0 ? -12 : 12)})`}
+                transform={`skewX(${i % 2 === 0 ? -12 : 12})`}
               />
             ))}
           </svg>
@@ -356,22 +413,21 @@ export default function App() {
           <div
             style={{
               position: "relative",
-              padding: 18,
+              padding: isMobile ? 14 : 18,
               display: "flex",
-              alignItems: "center",
+              flexDirection: isMobile ? "column" : "row",
+              alignItems: isMobile ? "flex-start" : "center",
               justifyContent: "space-between",
               gap: 14,
-              flexWrap: "wrap",
             }}
           >
-            {/* LOGO + TITULO */}
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: 14, flexDirection: isMobile ? "column" : "row" }}>
               <div
                 style={{
-                  width: 190,
-                  height: 56,
+                  width: isMobile ? 160 : 190,
+                  height: isMobile ? 52 : 56,
                   borderRadius: 16,
-                  background: "rgba(255,255,255,0.72)",
+                  background: "rgba(255,255,255,0.78)",
                   border: "1px solid rgba(255,255,255,0.65)",
                   display: "flex",
                   alignItems: "center",
@@ -387,48 +443,113 @@ export default function App() {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ fontSize: 20, fontWeight: 1000, color: "#0B1220" }}>
+                <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 1000, color: "#0B1220", lineHeight: 1.2 }}>
                   Simulador de Orçamento Solar
                 </div>
-                <div style={{ fontSize: 13, color: "#374151", fontWeight: 700 }}>
-                  PDF na hora • Pacotes (Econômico/Padrão/Premium) • WhatsApp com 1 clique
+                <div style={{ fontSize: 13, color: "#374151", fontWeight: 700, lineHeight: 1.35 }}>
+                  PDF na hora • Pacotes • WhatsApp com mensagem pronta
                 </div>
               </div>
             </div>
 
-            {/* CTA */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Button variant="secondary" onClick={() => window.open("https://wa.me/5579998451783", "_blank")}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", width: isMobile ? "100%" : "auto" }}>
+              <Button
+                variant="secondary"
+                fullWidth={isMobile}
+                onClick={() => window.open("https://wa.me/5579998451783", "_blank")}
+              >
                 💬 WhatsApp
               </Button>
-              <Button variant="primary" disabled={!canSubmit || loading} onClick={gerarSimulacaoInicial}>
-                {loading ? "Calculando..." : "Gerar simulação + PDF"}
+              <Button
+                variant="primary"
+                fullWidth={isMobile}
+                disabled={!canSubmit || loading}
+                onClick={gerarSimulacaoInicial}
+              >
+                {loading ? "Preparando simulação..." : "Gerar simulação + PDF"}
               </Button>
             </div>
           </div>
         </div>
 
+        {warmingUp && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 14,
+              background: "#FFF7E6",
+              border: "1px solid #FDE68A",
+              color: "#92400E",
+              fontWeight: 800,
+              fontSize: 13,
+              lineHeight: 1.4,
+            }}
+          >
+            Preparando simulador... no primeiro acesso o servidor pode demorar um pouco para responder.
+          </div>
+        )}
+
+        {loading && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 14,
+              background: "#ECFDF5",
+              border: "1px solid #A7F3D0",
+              color: "#065F46",
+              fontWeight: 800,
+              fontSize: 13,
+            }}
+          >
+            Gerando sua simulação e proposta em PDF...
+          </div>
+        )}
+
         {/* CONTEÚDO */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.05fr .95fr", gap: 16, marginTop: 16 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1.05fr .95fr",
+            gap: 16,
+            marginTop: 16,
+          }}
+        >
           {/* FORM */}
           <div
             style={{
               borderRadius: 22,
-              padding: 18,
+              padding: isMobile ? 14 : 18,
               background: "rgba(255,255,255,0.80)",
               border: "1px solid rgba(255,255,255,0.65)",
               boxShadow: "0 18px 44px rgba(0,0,0,.06)",
               backdropFilter: "blur(10px)",
             }}
           >
-            <div style={{ fontSize: 16, fontWeight: 1000, color: "#111827" }}>Dados para simulação</div>
-            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ fontSize: 16, fontWeight: 1000, color: "#111827" }}>
+              Dados para simulação
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: 12,
+              }}
+            >
               <Field label="Nome">
                 <Input name="nome" value={form.nome} onChange={onChange} placeholder="Seu nome" />
               </Field>
 
               <Field label="Telefone/WhatsApp">
-                <Input name="telefone" value={form.telefone} onChange={onChange} placeholder="(79) 9xxxx-xxxx" />
+                <Input
+                  name="telefone"
+                  value={form.telefone}
+                  onChange={onChange}
+                  placeholder="(79) 9xxxx-xxxx"
+                />
               </Field>
 
               <Field label="Cidade/UF">
@@ -436,12 +557,18 @@ export default function App() {
               </Field>
 
               <Field label="Conta total (R$/mês)">
-                <Input name="conta_media_rs" value={form.conta_media_rs} onChange={onChange} inputMode="decimal" placeholder="Ex: 500" />
+                <Input
+                  name="conta_media_rs"
+                  value={form.conta_media_rs}
+                  onChange={onChange}
+                  inputMode="decimal"
+                  placeholder="Ex: 500"
+                />
               </Field>
 
               <Field
                 label="Modo de taxas"
-                hint="Automático usa percentuais baseados na fatura (mais real)."
+                hint="Automático usa percentuais da concessionária."
               >
                 <Select name="modo_taxas" value={form.modo_taxas} onChange={onChange}>
                   <option value="PERCENTUAL">Automático (Energisa)</option>
@@ -451,7 +578,13 @@ export default function App() {
 
               {form.modo_taxas === "FIXO" ? (
                 <Field label="Valor fixo (taxas/encargos) R$" hint="Ex: CIP + custo mínimo.">
-                  <Input name="custo_fixo_mensal_rs" value={form.custo_fixo_mensal_rs} onChange={onChange} inputMode="decimal" placeholder="Ex: 120" />
+                  <Input
+                    name="custo_fixo_mensal_rs"
+                    value={form.custo_fixo_mensal_rs}
+                    onChange={onChange}
+                    inputMode="decimal"
+                    placeholder="Ex: 120"
+                  />
                 </Field>
               ) : (
                 <div
@@ -473,13 +606,27 @@ export default function App() {
                 </div>
               )}
 
-              <Field label="Tarifa (R$/kWh) — opcional" hint="Se não souber, deixe 0,95.">
-                <Input name="tarifa_rs_kwh" value={form.tarifa_rs_kwh} onChange={onChange} inputMode="decimal" placeholder="Ex: 0.95" />
+              <Field label="Tarifa (R$/kWh)" hint="Se não souber, deixe 0,95.">
+                <Input
+                  name="tarifa_rs_kwh"
+                  value={form.tarifa_rs_kwh}
+                  onChange={onChange}
+                  inputMode="decimal"
+                  placeholder="Ex: 0.95"
+                />
               </Field>
             </div>
 
             {error && (
-              <div style={{ marginTop: 12, padding: 12, borderRadius: 16, background: "rgba(254,242,242,0.95)", border: "1px solid #FECACA" }}>
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 16,
+                  background: "rgba(254,242,242,0.95)",
+                  border: "1px solid #FECACA",
+                }}
+              >
                 <div style={{ fontWeight: 1000, color: "#991B1B" }}>Erro</div>
                 <div style={{ color: "#7F1D1D", marginTop: 4 }}>{error}</div>
               </div>
@@ -490,7 +637,7 @@ export default function App() {
           <div
             style={{
               borderRadius: 22,
-              padding: 18,
+              padding: isMobile ? 14 : 18,
               background: "rgba(255,255,255,0.80)",
               border: "1px solid rgba(255,255,255,0.65)",
               boxShadow: "0 18px 44px rgba(0,0,0,.06)",
@@ -500,29 +647,67 @@ export default function App() {
           >
             <div style={{ fontSize: 16, fontWeight: 1000, color: "#111827" }}>Resultado</div>
             <div style={{ fontSize: 13, color: "#6B7280", fontWeight: 650, marginTop: 6 }}>
-              Estimativa + PDF + WhatsApp.
+              Estimativa da conta, sistema e economia.
             </div>
 
             {!result ? (
-              <div style={{ marginTop: 16, borderRadius: 18, border: "1px dashed #E5E7EB", padding: 16, color: "#6B7280", background: "rgba(255,255,255,0.65)" }}>
+              <div
+                style={{
+                  marginTop: 16,
+                  borderRadius: 18,
+                  border: "1px dashed #E5E7EB",
+                  padding: 16,
+                  color: "#6B7280",
+                  background: "rgba(255,255,255,0.65)",
+                  lineHeight: 1.5,
+                }}
+              >
                 Preencha os dados e clique em <b>Gerar simulação + PDF</b>.
               </div>
             ) : (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: 12,
+                    marginTop: 16,
+                  }}
+                >
                   <Stat label="Conta total" value={fmtBRL(result.conta_total_rs)} />
                   <Stat label="Taxas (fixo)" value={fmtBRL(result.custo_fixo_mensal_rs)} />
                   <Stat label="Parte variável" value={fmtBRL(result.valor_variavel_rs)} />
                   <Stat label="Consumo estimado" value={`${fmtInt(result.kwh_estimado_mes)} kWh/mês`} />
                   <Stat label="Sistema sugerido" value={`${Number(result.kwp_sugerido).toFixed(1)} kWp`} />
-                  <Stat label="Economia estimada" value={`${fmtBRL(result.economia_estimada_rs_mes)}/mês`} sub="limitada a 85%" />
+                  <Stat
+                    label="Economia estimada"
+                    value={`${fmtBRL(result.economia_estimada_rs_mes)}/mês`}
+                    sub="limitada a 85%"
+                  />
                 </div>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-                  <Button variant="secondary" onClick={() => window.open(`${API_BASE}${result.pdf_url}`, "_blank")}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: isMobile ? "column" : "row",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    marginTop: 14,
+                  }}
+                >
+                  <Button
+                    variant="secondary"
+                    fullWidth={isMobile}
+                    onClick={() => window.open(`${API_BASE}${result.pdf_url}`, "_blank")}
+                  >
                     📄 Baixar PDF
                   </Button>
-                  <Button variant="primary" onClick={() => window.open(result.whatsapp_url, "_blank")}>
+
+                  <Button
+                    variant="primary"
+                    fullWidth={isMobile}
+                    onClick={() => window.open(result.whatsapp_url, "_blank")}
+                  >
                     💬 Abrir WhatsApp
                   </Button>
                 </div>
@@ -534,14 +719,30 @@ export default function App() {
         {/* PACOTES */}
         {result && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                alignItems: isMobile ? "flex-start" : "baseline",
+                justifyContent: "space-between",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
               <div style={{ fontSize: 16, fontWeight: 1000, color: "#111827" }}>Pacotes</div>
               <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 800 }}>
-                Clique no pacote → confirmar → WhatsApp
+                Escolha um pacote e confirme no WhatsApp
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+                gap: 14,
+                marginTop: 12,
+              }}
+            >
               {pacotes.map((p) => (
                 <div
                   key={p.key}
@@ -549,24 +750,46 @@ export default function App() {
                     borderRadius: 22,
                     padding: 16,
                     background: p.destaque
-                      ? "linear-gradient(180deg, rgba(10,122,90,.10), rgba(255,255,255,.85))"
-                      : "rgba(255,255,255,0.80)",
-                    border: p.destaque ? "1px solid rgba(10,122,90,.25)" : "1px solid rgba(255,255,255,0.65)",
-                    boxShadow: p.destaque ? "0 24px 50px rgba(10,122,90,.12)" : "0 18px 44px rgba(0,0,0,.06)",
+                      ? "linear-gradient(180deg, rgba(10,122,90,.10), rgba(255,255,255,.90))"
+                      : "rgba(255,255,255,0.84)",
+                    border: p.destaque
+                      ? "1px solid rgba(10,122,90,.25)"
+                      : "1px solid rgba(255,255,255,0.65)",
+                    boxShadow: p.destaque
+                      ? "0 24px 50px rgba(10,122,90,.12)"
+                      : "0 18px 44px rgba(0,0,0,.06)",
                     backdropFilter: "blur(10px)",
                     position: "relative",
                   }}
                 >
                   {p.destaque && (
-                    <div style={{ position: "absolute", top: 12, right: 12, fontWeight: 900, fontSize: 12, color: "#0A7A5A" }}>
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 12,
+                        right: 12,
+                        fontWeight: 900,
+                        fontSize: 12,
+                        color: "#0A7A5A",
+                      }}
+                    >
                       🔥 Mais vendido
                     </div>
                   )}
 
                   <div style={{ fontSize: 18, fontWeight: 1000, color: "#111827" }}>{p.titulo}</div>
-                  <div style={{ color: "#6B7280", fontSize: 13, fontWeight: 700, marginTop: 6 }}>{p.badge}</div>
+                  <div style={{ color: "#6B7280", fontSize: 13, fontWeight: 700, marginTop: 6 }}>
+                    {p.badge}
+                  </div>
 
-                  <div style={{ fontSize: 26, fontWeight: 1000, color: "#111827", marginTop: 10 }}>
+                  <div
+                    style={{
+                      fontSize: isMobile ? 24 : 26,
+                      fontWeight: 1000,
+                      color: "#111827",
+                      marginTop: 10,
+                    }}
+                  >
                     {fmtBRL(p.valor)}
                   </div>
 
@@ -574,11 +797,28 @@ export default function App() {
                     Payback: <b>{p.payback == null ? "-" : `${Math.round(p.payback)} meses`}</b>
                   </div>
 
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                    <Button variant="primary" onClick={() => setConfirm({ pacote: p.titulo, valor: p.valor })}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: isMobile ? "column" : "row",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      marginTop: 12,
+                    }}
+                  >
+                    <Button
+                      variant="primary"
+                      fullWidth={isMobile}
+                      onClick={() => setConfirm({ pacote: p.titulo, valor: p.valor })}
+                    >
                       Quero este pacote
                     </Button>
-                    <Button variant="secondary" onClick={() => window.open(`${API_BASE}${result.pdf_url}`, "_blank")}>
+
+                    <Button
+                      variant="secondary"
+                      fullWidth={isMobile}
+                      onClick={() => window.open(`${API_BASE}${result.pdf_url}`, "_blank")}
+                    >
                       Ver PDF
                     </Button>
                   </div>
@@ -592,12 +832,20 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ marginTop: 16, textAlign: "center", color: "#6B7280", fontSize: 12, fontWeight: 800 }}>
+        <div
+          style={{
+            marginTop: 16,
+            textAlign: "center",
+            color: "#6B7280",
+            fontSize: 12,
+            fontWeight: 800,
+            paddingBottom: isMobile ? 12 : 0,
+          }}
+        >
           © Gregory Segurança Eletrônica & Energia Solar — WhatsApp: (79) 99845-1783
         </div>
       </div>
 
-      {/* Modal confirmação */}
       {confirm && (
         <Modal title="Confirmar e abrir WhatsApp" onClose={() => (!loadingPacote ? setConfirm(null) : null)}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -605,17 +853,55 @@ export default function App() {
               Você escolheu o pacote <span style={{ color: "#0A7A5A" }}>{confirm.pacote}</span>
             </div>
 
-            <div style={{ color: "#111827", fontWeight: 1000, fontSize: 18 }}>{fmtBRL(confirm.valor)}</div>
-
-            <div style={{ color: "#6B7280", fontWeight: 650, fontSize: 13 }}>
-              Ao confirmar, geramos um PDF novo destacando este pacote e abrimos o WhatsApp com mensagem pronta.
+            <div style={{ color: "#111827", fontWeight: 1000, fontSize: 18 }}>
+              {fmtBRL(confirm.valor)}
             </div>
 
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 8 }}>
-              <Button variant="secondary" disabled={loadingPacote} onClick={() => setConfirm(null)}>
+            <div style={{ color: "#6B7280", fontWeight: 650, fontSize: 13, lineHeight: 1.45 }}>
+              Ao confirmar, vamos gerar a proposta final desse pacote e abrir o WhatsApp com a mensagem pronta.
+            </div>
+
+            {loadingPacote && (
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  background: "#ECFDF5",
+                  border: "1px solid #A7F3D0",
+                  color: "#065F46",
+                  fontWeight: 800,
+                  fontSize: 13,
+                }}
+              >
+                Gerando proposta do pacote...
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                gap: 10,
+                justifyContent: "flex-end",
+                flexWrap: "wrap",
+                marginTop: 8,
+              }}
+            >
+              <Button
+                variant="secondary"
+                fullWidth={isMobile}
+                disabled={loadingPacote}
+                onClick={() => setConfirm(null)}
+              >
                 Cancelar
               </Button>
-              <Button variant="primary" disabled={loadingPacote} onClick={confirmarEAbrirWhatsApp}>
+
+              <Button
+                variant="primary"
+                fullWidth={isMobile}
+                disabled={loadingPacote}
+                onClick={confirmarEAbrirWhatsApp}
+              >
                 {loadingPacote ? "Gerando PDF..." : "Confirmar e abrir WhatsApp"}
               </Button>
             </div>
