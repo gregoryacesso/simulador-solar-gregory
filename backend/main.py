@@ -5,8 +5,6 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 import uuid
 import os
-import csv
-from datetime import datetime
 from typing import Literal
 
 from config import settings
@@ -18,7 +16,7 @@ from utils import (
     estimativa_payback,
 )
 from pdf_gen import gerar_pdf
-from leads import salvar_ou_atualizar_lead
+from supabase_db import salvar_ou_atualizar_lead_db, listar_leads_db
 
 APP_DIR = Path(__file__).parent
 STORAGE_DIR = APP_DIR / "storage"
@@ -26,8 +24,6 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 ASSETS_DIR = APP_DIR / "assets"
 LOGO_PATH = ASSETS_DIR / "logo.jpeg"
-
-LEADS_FILE = APP_DIR / "leads.csv"
 
 app = FastAPI(title="Simulador de Orçamento Solar - Gregory")
 
@@ -39,7 +35,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-PacoteNome = Literal["Econômico", "Padrão", "Premium"]
 ModoTaxas = Literal["PERCENTUAL", "FIXO"]
 
 
@@ -57,12 +52,9 @@ class SimulacaoIn(BaseModel):
     hsp: float = Field(default=settings.default_hsp, gt=0)
     pr: float = Field(default=settings.performance_ratio, gt=0)
 
-    pacote_destacado: PacoteNome = "Padrão"
-
 
 class SimulacaoOut(BaseModel):
     id: str
-
     kwp_sugerido: float
     producao_estimada_kwh_mes: float
 
@@ -74,16 +66,8 @@ class SimulacaoOut(BaseModel):
 
     economia_estimada_rs_mes: float
 
-    investimento_economico_rs: float
-    investimento_padrao_rs: float
-    investimento_premium_rs: float
-
-    payback_meses_economico: float | None
-    payback_meses_padrao: float | None
-    payback_meses_premium: float | None
-
-    pacote_destacado: PacoteNome
-    valor_pacote_destacado_rs: float
+    investimento_total_rs: float
+    payback_meses: float | None
 
     pdf_url: str
     pdf_full_url: str
@@ -94,21 +78,12 @@ class LeadZapIn(BaseModel):
     id: str
 
 
-def valor_pacote_destacado(pacote: str, inv_econ: float, inv_pad: float, inv_pre: float) -> float:
-    if pacote == "Econômico":
-        return inv_econ
-    if pacote == "Premium":
-        return inv_pre
-    return inv_pad
-
-
 def build_whatsapp_url(
     nome: str,
     cidade_uf: str,
     conta_total_rs: float,
     kwp: float,
-    pacote_destacado: str,
-    valor_pacote_rs: float,
+    valor_total_rs: float,
     pdf_full_url: str,
 ) -> str:
     msg = (
@@ -117,9 +92,9 @@ def build_whatsapp_url(
         f"Cidade: {cidade_uf}\n"
         f"Conta média: R$ {conta_total_rs:.2f}\n"
         f"Sistema sugerido: {kwp:.1f} kWp\n"
-        f"Pacote escolhido: {pacote_destacado} (R$ {valor_pacote_rs:.2f})\n\n"
+        f"Investimento estimado: R$ {valor_total_rs:.2f}\n\n"
         f"PDF: {pdf_full_url}\n\n"
-        f"Quero um orçamento final e agendar a visita técnica."
+        f"Quero um orçamento final e opções de pagamento/financiamento."
     )
     import urllib.parse
     return f"https://wa.me/{settings.whatsapp_number_e164}?text={urllib.parse.quote(msg)}"
@@ -145,37 +120,27 @@ def simular(data: SimulacaoIn):
     teto_economia_rs = data.conta_media_rs * settings.max_reducao
     economia_rs = max(0.0, min(economia_teorica_rs, teto_economia_rs))
 
-    inv_econ = kwp * settings.preco_kwp_economico
-    inv_pad = kwp * settings.preco_kwp_padrao
-    inv_pre = kwp * settings.preco_kwp_premium
+    investimento_total_rs = kwp * settings.preco_kwp_unico
+    payback_meses = estimativa_payback(investimento_total_rs, economia_rs)
 
-    pb_econ = estimativa_payback(inv_econ, economia_rs)
-    pb_pad = estimativa_payback(inv_pad, economia_rs)
-    pb_pre = estimativa_payback(inv_pre, economia_rs)
-
-    pacote_destacado = data.pacote_destacado
-    valor_destacado = valor_pacote_destacado(pacote_destacado, inv_econ, inv_pad, inv_pre)
-
-    salvar_ou_atualizar_lead({
+    salvar_ou_atualizar_lead_db({
         "id": lead_id,
         "nome": data.nome,
         "telefone": data.telefone,
         "cidade": data.cidade_uf,
-        "conta_total": f"{data.conta_media_rs:.2f}",
+        "conta_total": data.conta_media_rs,
         "modo_taxas": data.modo_taxas,
-        "custo_fixo": f"{custo_fixo_rs:.2f}",
-        "valor_variavel": f"{valor_variavel_rs:.2f}",
-        "kwh_estimado": f"{kwh_mes:.0f}",
-        "kwp": f"{kwp:.1f}",
-        "pacote": pacote_destacado,
-        "valor_pacote": f"{valor_destacado:.2f}",
+        "custo_fixo": custo_fixo_rs,
+        "valor_variavel": valor_variavel_rs,
+        "kwh_estimado": round(kwh_mes),
+        "kwp": kwp,
+        "pacote": "VALOR_UNICO",
+        "valor_pacote": investimento_total_rs,
         "status": "SIMULOU",
     })
 
     pdf_name = f"orcamento_solar_{lead_id}.pdf"
     pdf_path = STORAGE_DIR / pdf_name
-
-    condicao = "Entrada + 18x sem juros no cartão. Passe o cartão apenas quando o sistema estiver instalado."
 
     gerar_pdf(
         out_path=pdf_path,
@@ -195,14 +160,13 @@ def simular(data: SimulacaoIn):
         kwp_sugerido=kwp,
         prod_estimada_kwh_mes=prod_kwh,
         economia_estimada_rs_mes=economia_rs,
-        investimento_economico_rs=inv_econ,
-        investimento_padrao_rs=inv_pad,
-        investimento_premium_rs=inv_pre,
-        payback_meses_economico=pb_econ,
-        payback_meses_padrao=pb_pad,
-        payback_meses_premium=pb_pre,
-        pacote_destacado=pacote_destacado,
-        condicao_pagamento=condicao,
+        investimento_total_rs=investimento_total_rs,
+        payback_meses=payback_meses,
+        condicoes_pagamento=[
+            "À vista",
+            "Entrada + parcelamento no cartão",
+            "Financiamento bancário sujeito à aprovação",
+        ],
         validade_dias=10,
     )
 
@@ -215,8 +179,7 @@ def simular(data: SimulacaoIn):
         cidade_uf=data.cidade_uf,
         conta_total_rs=data.conta_media_rs,
         kwp=kwp,
-        pacote_destacado=pacote_destacado,
-        valor_pacote_rs=valor_destacado,
+        valor_total_rs=investimento_total_rs,
         pdf_full_url=pdf_full_url,
     )
 
@@ -230,14 +193,8 @@ def simular(data: SimulacaoIn):
         valor_variavel_rs=valor_variavel_rs,
         kwh_estimado_mes=kwh_mes,
         economia_estimada_rs_mes=economia_rs,
-        investimento_economico_rs=inv_econ,
-        investimento_padrao_rs=inv_pad,
-        investimento_premium_rs=inv_pre,
-        payback_meses_economico=pb_econ,
-        payback_meses_padrao=pb_pad,
-        payback_meses_premium=pb_pre,
-        pacote_destacado=pacote_destacado,
-        valor_pacote_destacado_rs=valor_destacado,
+        investimento_total_rs=investimento_total_rs,
+        payback_meses=payback_meses,
         pdf_url=pdf_url,
         pdf_full_url=pdf_full_url,
         whatsapp_url=whatsapp_url,
@@ -246,10 +203,11 @@ def simular(data: SimulacaoIn):
 
 @app.post("/api/lead-zap")
 def marcou_whatsapp(dados: LeadZapIn):
-    salvar_ou_atualizar_lead({
-        "id": dados.id,
-        "status": "CHAMOU_NO_ZAP",
-    })
+    leads = listar_leads_db()
+    lead = next((x for x in leads if x.get("id") == dados.id), None)
+    if lead:
+        lead["status"] = "CHAMOU_NO_ZAP"
+        salvar_ou_atualizar_lead_db(lead)
     return {"ok": True}
 
 
@@ -261,35 +219,9 @@ def get_pdf(pdf_name: str):
     return FileResponse(str(pdf_path), media_type="application/pdf", filename=pdf_name)
 
 
-@app.get("/leads")
-def listar_leads():
-    if not LEADS_FILE.exists():
-        return {"mensagem": "Nenhum lead registrado ainda."}
-    return FileResponse(
-        LEADS_FILE,
-        media_type="text/csv",
-        filename="leads.csv"
-    )
-
-
 @app.get("/leads-json")
 def listar_leads_json():
-    if not LEADS_FILE.exists():
-        return {"mensagem": "Nenhum lead registrado ainda."}
-
-    with open(LEADS_FILE, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        leads = list(reader)
-
-    def parse_data(item):
-        try:
-            return datetime.strptime(item.get("data", ""), "%d/%m/%Y %H:%M")
-        except Exception:
-            return datetime.min
-
-    # mais novo primeiro
-    leads.sort(key=parse_data, reverse=True)
-    return leads
+    return listar_leads_db()
 
 
 @app.get("/api/health")
